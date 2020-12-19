@@ -66,7 +66,7 @@ fn main() {
         .unwrap();
     let player_texture = Texture::from_path(
         &mut window.create_texture_context(),
-        assets.join("basic_guy1.png"),
+        assets.join("basic_guy.png"),
         Flip::None,
         &TextureSettings::new(),
     )
@@ -146,10 +146,10 @@ fn print_player_position(ecs: &World) {
 
 fn in_game_capture(event: &Event, ecs: &World) {
     match event.press_args() {
-        Some(Button::Keyboard(Key::W)) => try_move_player(0, -5, ecs),
-        Some(Button::Keyboard(Key::A)) => try_move_player(-5, 0, ecs),
-        Some(Button::Keyboard(Key::S)) => try_move_player(0, 5, ecs),
-        Some(Button::Keyboard(Key::D)) => try_move_player(5, 0, ecs),
+        Some(Button::Keyboard(Key::W)) => try_move_player(0, -16, ecs),
+        Some(Button::Keyboard(Key::A)) => try_move_player(-16, 0, ecs),
+        Some(Button::Keyboard(Key::S)) => try_move_player(0, 16, ecs),
+        Some(Button::Keyboard(Key::D)) => try_move_player(16, 0, ecs),
         Some(Button::Keyboard(Key::Return)) => print_player_position(ecs),
         _ => (),
     }
@@ -161,41 +161,17 @@ fn in_game_draw(window: &mut PistonWindow, event: &Event, ecs: &World) {
         clear([0.8, 0.8, 0.8, 1.0], g);
         g.clear_stencil(0);
 
-        // Calculate viewport based on player position
-        // Viewport is specified as a tuple of pixel top-left coordinates
-        let player = ecs.read_storage::<Player>();
-        let positions = ecs.read_storage::<Position>();
-        let mut viewport = (0, 0);
-        for (_player, pos) in (&player, &positions).join() {
-            viewport = (pos.x - (WIDTH_PX / 2), pos.y - (HEIGHT_PX / 2));
-        };
-        println!("Viewport is -> ({}, {})", viewport.0, viewport.1);
+        let viewport = calculate_viewport(ecs);
 
-        // Given viewport start point, decompose into an vector of tile coordinates
-        // left-to-right scrolling matrix of tile top-left coordinates
-        let mut viewport_tiles = Vec::new();
-        let mut view_x = 0;
-        let mut view_y = 0;
-        for y in viewport.1..viewport.1 + HEIGHT_PX {
-            if y % TL_PX != 0 {
-                continue;
-            }
-            for x in viewport.0..viewport.0 + WIDTH_PX {
-                if x % TL_PX != 0 {
-                    continue;
-                }
-                viewport_tiles.push((view_x, view_y));
-                view_x += 1;
-            }
-            view_y += 1;
-        }
+        let viewport_tiles = generate_viewport_tiles(viewport);
 
-        // TODO: Render viewport tiles in place on screen
+        // Render viewport tiles in place on screen
         // Render each tile using the given pixel positions
         let map = ecs.fetch::<BTreeMap<(i32, i32), TileType>>();
         let textures_by_tile_type = ecs.fetch::<HashMap<TileType, G2dTexture>>();
-        for (tile_x, tile_y) in viewport_tiles.iter() {
-            let tile_transform = c.transform.trans((tile_x * TL_PX) as f64, (tile_y * TL_PX) as f64);
+        for (tile_x, tile_y, view_x, view_y) in viewport_tiles.iter() {
+            let screen_coordinates = translate_viewport_tile_to_screen((*view_x, *view_y));
+            let tile_transform = c.transform.trans(screen_coordinates.0 as f64, screen_coordinates.1 as f64);
             match map.get(&(*tile_x, *tile_y)) {
                 Some(map_tile) => {
                     match textures_by_tile_type.get(&map_tile) {
@@ -209,16 +185,57 @@ fn in_game_draw(window: &mut PistonWindow, event: &Event, ecs: &World) {
             }
         }
 
-        // TODO: Render player in place on screen
+        // Render player in place on screen
         // This is easy now since we will always just render the player in the middle of the screen
         let positions = ecs.read_storage::<Position>();
         let renderables = ecs.read_storage::<Renderable>();
         for (_pos, render) in (&positions, &renderables).join() {
-            // let player_transform = c.transform.trans(pos.x as f64, pos.y as f64);
             let player_transform = c.transform.trans((WIDTH_PX / 2) as f64, (HEIGHT_PX / 2) as f64);
             Image::new().draw(&render.texture, &c.draw_state, player_transform, g);
         }
     });
+}
+
+/// Given viewport start point, decompose into an vector of tile coordinates
+/// left-to-right scrolling matrix of tile top-left coordinates
+fn generate_viewport_tiles(viewport: (i32, i32)) -> Vec<(i32, i32, i32, i32)> {
+    let mut viewport_tiles = Vec::new();
+    let mut tile_x = viewport.0 / TL_PX;
+    let mut tile_y = viewport.1 / TL_PX;
+    for y in viewport.1..viewport.1 + HEIGHT_PX {
+        if y % TL_PX != 0 {
+            continue;
+        }
+        for x in viewport.0..viewport.0 + WIDTH_PX {
+            if x % TL_PX != 0 {
+                continue;
+            }
+            viewport_tiles.push((tile_x, tile_y, x, y));
+            tile_x += 1;
+        }
+        // Reset the x tile counter in preparation for the next row
+        tile_x = viewport.0 / TL_PX;
+        tile_y += 1;
+    }
+    // println!("Created a viewport matrix with length {}, first {:?}, last {:?}",
+    //     viewport_tiles.len(),
+    //     viewport_tiles[0],
+    //     viewport_tiles.last());
+    viewport_tiles
+}
+
+/// Calculate viewport based on player position
+/// Viewport is specified as a tuple of pixel top-left coordinates
+fn calculate_viewport(ecs: &World) -> (i32, i32) {
+    let player = ecs.read_storage::<Player>();
+    let positions = ecs.read_storage::<Position>();
+    let (_player, pos) = (&player, &positions).join().next().expect("whoops");
+    // println!("Viewport is -> ({}, {})", viewport.0, viewport.1);
+    return (pos.x - (WIDTH_PX / 2), pos.y - (HEIGHT_PX / 2));
+}
+
+fn translate_viewport_tile_to_screen(tile_view: (i32, i32)) -> (i32, i32) {
+    (tile_view.0 + (WIDTH_PX / 2), tile_view.1 + (HEIGHT_PX / 2))
 }
 
 fn start_menu_capture(_event: &Event) {
@@ -227,7 +244,7 @@ fn start_menu_capture(_event: &Event) {
 
 fn start_menu_draw(window: &mut PistonWindow, glyphs: &mut Glyphs, event: &Event) {
     window.draw_2d(event, |c, g, device| {
-        let transform = c.transform.trans(250.0, 280.0);
+        let transform = c.transform.trans(320.0, 280.0);
 
         clear([0.0, 0.0, 0.0, 1.0], g);
         text::Text::new_color([1.0, 1.0, 1.0, 1.0], 32)
