@@ -14,6 +14,9 @@ use specs_derive::Component;
 mod map;
 pub use map::*;
 
+mod viewport;
+pub use viewport::*;
+
 enum RootState {
     StartMenu,
     InGame,
@@ -161,8 +164,11 @@ fn in_game_draw(window: &mut PistonWindow, event: &Event, ecs: &World) {
         clear([0.8, 0.8, 0.8, 1.0], g);
         g.clear_stencil(0);
 
-        let viewport = calculate_viewport(ecs);
+        let player = ecs.read_storage::<Player>();
+        let positions = ecs.read_storage::<Position>();
+        let (_player, pos) = (&player, &positions).join().next().expect("No player and position entities found");
 
+        let viewport = calculate_viewport((pos.x, pos.y));
         let viewport_tiles = generate_viewport_tiles(viewport);
 
         // Render viewport tiles in place on screen
@@ -170,8 +176,11 @@ fn in_game_draw(window: &mut PistonWindow, event: &Event, ecs: &World) {
         let map = ecs.fetch::<BTreeMap<(i32, i32), TileType>>();
         let textures_by_tile_type = ecs.fetch::<HashMap<TileType, G2dTexture>>();
         for (tile_x, tile_y, view_x, view_y) in viewport_tiles.iter() {
+            // Transform from viewport coordinates to screen coordinates
             let screen_coordinates = translate_viewport_tile_to_screen((*view_x, *view_y));
             let tile_transform = c.transform.trans(screen_coordinates.0 as f64, screen_coordinates.1 as f64);
+
+            // Retrieve the appropriate tile texture from the map using the tile coordinates
             match map.get(&(*tile_x, *tile_y)) {
                 Some(map_tile) => {
                     match textures_by_tile_type.get(&map_tile) {
@@ -180,8 +189,11 @@ fn in_game_draw(window: &mut PistonWindow, event: &Event, ecs: &World) {
                             &c.draw_state, tile_transform, g)
                     }
                 },
-                None => Image::new().draw(textures_by_tile_type.get(&TileType::Missing).expect("could not render missing type"),
-                    &c.draw_state, tile_transform, g)
+                None => {
+                    println!("Couldn't retrieve tile from map with coordinates -> {:?}", screen_coordinates);
+                    Image::new().draw(textures_by_tile_type.get(&TileType::Missing).expect("could not render missing type"),
+                    &c.draw_state, tile_transform, g);
+                }
             }
         }
 
@@ -194,44 +206,6 @@ fn in_game_draw(window: &mut PistonWindow, event: &Event, ecs: &World) {
             Image::new().draw(&render.texture, &c.draw_state, player_transform, g);
         }
     });
-}
-
-/// Given viewport start point, decompose into an vector of tile coordinates
-/// left-to-right scrolling matrix of tile top-left coordinates
-fn generate_viewport_tiles(viewport: (i32, i32)) -> Vec<(i32, i32, i32, i32)> {
-    let mut viewport_tiles = Vec::new();
-    let mut tile_x = viewport.0 / TL_PX;
-    let mut tile_y = viewport.1 / TL_PX;
-    for y in viewport.1..viewport.1 + HEIGHT_PX {
-        if y % TL_PX != 0 {
-            continue;
-        }
-        for x in viewport.0..viewport.0 + WIDTH_PX {
-            if x % TL_PX != 0 {
-                continue;
-            }
-            viewport_tiles.push((tile_x, tile_y, x, y));
-            tile_x += 1;
-        }
-        // Reset the x tile counter in preparation for the next row
-        tile_x = viewport.0 / TL_PX;
-        tile_y += 1;
-    }
-    // println!("Created a viewport matrix with length {}, first {:?}, last {:?}",
-    //     viewport_tiles.len(),
-    //     viewport_tiles[0],
-    //     viewport_tiles.last());
-    viewport_tiles
-}
-
-/// Calculate viewport based on player position
-/// Viewport is specified as a tuple of pixel top-left coordinates
-fn calculate_viewport(ecs: &World) -> (i32, i32) {
-    let player = ecs.read_storage::<Player>();
-    let positions = ecs.read_storage::<Position>();
-    let (_player, pos) = (&player, &positions).join().next().expect("whoops");
-    // println!("Viewport is -> ({}, {})", viewport.0, viewport.1);
-    return (pos.x - (WIDTH_PX / 2), pos.y - (HEIGHT_PX / 2));
 }
 
 fn translate_viewport_tile_to_screen(tile_view: (i32, i32)) -> (i32, i32) {

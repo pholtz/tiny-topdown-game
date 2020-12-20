@@ -7,8 +7,6 @@ use crate::HEIGHT_TL;
 use crate::TL_PX;
 use crate::{load_asset, Position, Renderable, Tile, WIDTH_TL};
 
-// pub use super::*;
-
 #[derive(Eq, PartialEq, Copy, Clone, Hash, Ord, PartialOrd)]
 pub enum TileType {
     Wall,
