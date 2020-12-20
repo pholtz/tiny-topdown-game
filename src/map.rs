@@ -5,7 +5,7 @@ use specs::prelude::*;
 
 use crate::HEIGHT_TL;
 use crate::TL_PX;
-use crate::{load_asset, Position, Renderable, Tile, WIDTH_TL};
+use crate::{WIDTH_TL};
 
 #[derive(Eq, PartialEq, Copy, Clone, Hash, Ord, PartialOrd)]
 pub enum TileType {
@@ -14,12 +14,12 @@ pub enum TileType {
     Missing
 }
 
-pub fn to_px(tl: i32) {
-    tl * TL_PX;
+pub fn to_px(tl: i32) -> i32 {
+    tl * TL_PX
 }
 
 /// Creates a basic map with just floor. Doesn't do any objects yet.
-pub fn load_basic_map(window: &mut PistonWindow, ecs: &mut World) -> BTreeMap<(i32, i32), TileType> {
+pub fn load_basic_map(_window: &mut PistonWindow, _ecs: &mut World) -> BTreeMap<(i32, i32), TileType> {
     let mut map = BTreeMap::new();
 
     for x in (-1 * WIDTH_TL)..WIDTH_TL {

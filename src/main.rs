@@ -4,7 +4,7 @@ extern crate graphics;
 extern crate opengl_graphics;
 extern crate piston;
 
-use std::{cmp::{max, min}, collections::{BTreeMap, HashMap}, convert::TryInto};
+use std::{collections::{BTreeMap, HashMap}};
 
 use piston::window::WindowSettings;
 use piston_window::*;
@@ -40,11 +40,6 @@ struct Renderable {
 #[derive(Component, Debug)]
 struct Player {}
 
-#[derive(Component)]
-struct Tile {
-    tile_type: TileType,
-}
-
 pub const WIDTH_PX: i32 = 960;
 pub const HEIGHT_PX: i32 = 540;
 pub const TL_PX: i32 = 16;
@@ -79,7 +74,6 @@ fn main() {
     gs.ecs.register::<Position>();
     gs.ecs.register::<Renderable>();
     gs.ecs.register::<Player>();
-    gs.ecs.register::<Tile>();
 
     gs.ecs
         .create_entity()
@@ -169,16 +163,17 @@ fn in_game_draw(window: &mut PistonWindow, event: &Event, ecs: &World) {
         let (_player, pos) = (&player, &positions).join().next().expect("No player and position entities found");
 
         let viewport = calculate_viewport((pos.x, pos.y));
+        println!("Player position is ({}, {}), viewport calculated as ({}, {})", pos.x, pos.y, viewport.0, viewport.1);
+
         let viewport_tiles = generate_viewport_tiles(viewport);
 
         // Render viewport tiles in place on screen
         // Render each tile using the given pixel positions
         let map = ecs.fetch::<BTreeMap<(i32, i32), TileType>>();
         let textures_by_tile_type = ecs.fetch::<HashMap<TileType, G2dTexture>>();
-        for (tile_x, tile_y, view_x, view_y) in viewport_tiles.iter() {
-            // Transform from viewport coordinates to screen coordinates
-            let screen_coordinates = translate_viewport_tile_to_screen((*view_x, *view_y));
-            let tile_transform = c.transform.trans(screen_coordinates.0 as f64, screen_coordinates.1 as f64);
+        for (tile_x, tile_y, _view_x, _view_y, screen_x, screen_y) in viewport_tiles.iter() {
+
+            let tile_transform = c.transform.trans(*screen_x as f64, *screen_y as f64);
 
             // Retrieve the appropriate tile texture from the map using the tile coordinates
             match map.get(&(*tile_x, *tile_y)) {
@@ -190,7 +185,7 @@ fn in_game_draw(window: &mut PistonWindow, event: &Event, ecs: &World) {
                     }
                 },
                 None => {
-                    println!("Couldn't retrieve tile from map with coordinates -> {:?}", screen_coordinates);
+                    println!("Couldn't retrieve tile from map with coordinates -> ({}, {})", *tile_x, *tile_y);
                     Image::new().draw(textures_by_tile_type.get(&TileType::Missing).expect("could not render missing type"),
                     &c.draw_state, tile_transform, g);
                 }
@@ -206,10 +201,6 @@ fn in_game_draw(window: &mut PistonWindow, event: &Event, ecs: &World) {
             Image::new().draw(&render.texture, &c.draw_state, player_transform, g);
         }
     });
-}
-
-fn translate_viewport_tile_to_screen(tile_view: (i32, i32)) -> (i32, i32) {
-    (tile_view.0 + (WIDTH_PX / 2), tile_view.1 + (HEIGHT_PX / 2))
 }
 
 fn start_menu_capture(_event: &Event) {
