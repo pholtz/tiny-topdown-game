@@ -22,6 +22,14 @@ enum RootState {
     InGame,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+enum Direction {
+    Up,
+    Down,
+    Left,
+    Right,
+}
+
 struct State {
     ecs: World,
 }
@@ -38,11 +46,13 @@ struct Renderable {
 }
 
 #[derive(Component, Debug)]
-struct Player {}
+struct Player {
+    direction: Direction
+}
 
 pub const WIDTH_PX: i32 = 960;
 pub const HEIGHT_PX: i32 = 540;
-pub const TL_PX: i32 = 16;
+pub const TL_PX: i32 = 32;
 pub const WIDTH_TL: i32 = WIDTH_PX / TL_PX;
 pub const HEIGHT_TL: i32 = HEIGHT_PX / TL_PX;
 
@@ -81,11 +91,20 @@ fn main() {
         .with(Renderable {
             texture: player_texture,
         })
-        .with(Player {})
+        .with(Player {
+            direction: Direction::Down
+        })
         .build();
 
     let map = load_basic_map(&mut window, &mut gs.ecs);
     gs.ecs.insert(map);
+
+    let mut textures_by_player_direction = HashMap::new();
+    textures_by_player_direction.insert(Direction::Down, load_asset(&mut window, "basic_guy.png"));
+    textures_by_player_direction.insert(Direction::Up, load_asset(&mut window, "basic_guy_up.png"));
+    textures_by_player_direction.insert(Direction::Left, load_asset(&mut window, "basic_guy_left.png"));
+    textures_by_player_direction.insert(Direction::Right, load_asset(&mut window, "basic_guy_right.png"));
+    gs.ecs.insert(textures_by_player_direction);
 
     let mut textures_by_tile_type = HashMap::new();
     textures_by_tile_type.insert(TileType::Missing, load_asset(&mut window, "missing.png"));
@@ -124,12 +143,19 @@ fn load_asset(window: &mut PistonWindow, filename: &str) -> G2dTexture {
     .unwrap()
 }
 
-fn try_move_player(delta_x: i32, delta_y: i32, ecs: &World) {
+fn try_move_player(direction: Direction, ecs: &World) {
+    let delta = match direction {
+        Direction::Up => (0, -1 * TL_PX),
+        Direction::Left => (-1 * TL_PX, 0),
+        Direction::Down => (0, TL_PX),
+        Direction::Right => (TL_PX, 0),
+    };
     let mut positions = ecs.write_storage::<Position>();
     let mut players = ecs.write_storage::<Player>();
-    for (_player, pos) in (&mut players, &mut positions).join() {
-        pos.x += delta_x;
-        pos.y += delta_y;
+    for (player, pos) in (&mut players, &mut positions).join() {
+        player.direction = direction;
+        pos.x += delta.0;
+        pos.y += delta.1;
     }
 }
 
@@ -143,10 +169,10 @@ fn print_player_position(ecs: &World) {
 
 fn in_game_capture(event: &Event, ecs: &World) {
     match event.press_args() {
-        Some(Button::Keyboard(Key::W)) => try_move_player(0, -16, ecs),
-        Some(Button::Keyboard(Key::A)) => try_move_player(-16, 0, ecs),
-        Some(Button::Keyboard(Key::S)) => try_move_player(0, 16, ecs),
-        Some(Button::Keyboard(Key::D)) => try_move_player(16, 0, ecs),
+        Some(Button::Keyboard(Key::W)) => try_move_player(Direction::Up, ecs),
+        Some(Button::Keyboard(Key::A)) => try_move_player(Direction::Left, ecs),
+        Some(Button::Keyboard(Key::S)) => try_move_player(Direction::Down, ecs),
+        Some(Button::Keyboard(Key::D)) => try_move_player(Direction::Right, ecs),
         Some(Button::Keyboard(Key::Return)) => print_player_position(ecs),
         _ => (),
     }
@@ -196,9 +222,13 @@ fn in_game_draw(window: &mut PistonWindow, event: &Event, ecs: &World) {
         // This is easy now since we will always just render the player in the middle of the screen
         let positions = ecs.read_storage::<Position>();
         let renderables = ecs.read_storage::<Renderable>();
-        for (_pos, render) in (&positions, &renderables).join() {
-            let player_transform = c.transform.trans((WIDTH_PX / 2) as f64, (HEIGHT_PX / 2) as f64);
-            Image::new().draw(&render.texture, &c.draw_state, player_transform, g);
+        let players = ecs.read_storage::<Player>();
+        let textures_by_player_direction = ecs.fetch::<HashMap<Direction, G2dTexture>>();
+        for (_pos, render, player) in (&positions, &renderables, &players).join() {
+            Image::new().draw(textures_by_player_direction.get(&player.direction).expect("could not source player texture"),
+                &c.draw_state,
+                c.transform.trans((WIDTH_PX / 2) as f64, (HEIGHT_PX / 2) as f64),
+                g);
         }
     });
 }
