@@ -3,6 +3,7 @@ extern crate glutin_window;
 extern crate graphics;
 extern crate opengl_graphics;
 extern crate piston;
+extern crate tiled;
 
 use std::{collections::{BTreeMap, HashMap}};
 
@@ -42,7 +43,6 @@ struct Position {
 
 #[derive(Component)]
 struct Renderable {
-    texture: G2dTexture,
 }
 
 #[derive(Component, Debug)]
@@ -72,13 +72,6 @@ fn main() {
     let mut glyphs = window
         .load_font(assets.join("FiraSans-Regular.ttf"))
         .unwrap();
-    let player_texture = Texture::from_path(
-        &mut window.create_texture_context(),
-        assets.join("basic_guy.png"),
-        Flip::None,
-        &TextureSettings::new(),
-    )
-    .unwrap();
 
     let mut gs = State { ecs: World::new() };
     gs.ecs.register::<Position>();
@@ -88,16 +81,17 @@ fn main() {
     gs.ecs
         .create_entity()
         .with(Position { x: 0, y: 0 })
-        .with(Renderable {
-            texture: player_texture,
-        })
+        .with(Renderable {})
         .with(Player {
             direction: Direction::Down
         })
         .build();
 
-    let map = load_basic_map(&mut window, &mut gs.ecs);
+    // let map = load_basic_map(&mut window, &mut gs.ecs);
+    let (map, tilesheet) = load_basic_map_tmx();
     gs.ecs.insert(map);
+    gs.ecs.insert(tilesheet);
+    gs.ecs.insert(load_asset(&mut window, "grass_tileset.png"));
 
     let mut textures_by_player_direction = HashMap::new();
     textures_by_player_direction.insert(Direction::Down, load_asset(&mut window, "basic_guy.png"));
@@ -189,33 +183,53 @@ fn in_game_draw(window: &mut PistonWindow, event: &Event, ecs: &World) {
         let (_player, pos) = (&player, &positions).join().next().expect("No player and position entities found");
 
         let viewport = calculate_viewport((pos.x, pos.y));
-        println!("Player position is ({}, {}), viewport calculated as ({}, {})", pos.x, pos.y, viewport.0, viewport.1);
+        // println!("Player position is ({}, {}), viewport calculated as ({}, {})", pos.x, pos.y, viewport.0, viewport.1);
 
         let viewport_tiles = generate_viewport_tiles(viewport);
 
         // Render viewport tiles in place on screen
         // Render each tile using the given pixel positions
-        let map = ecs.fetch::<BTreeMap<(i32, i32), TileType>>();
-        let textures_by_tile_type = ecs.fetch::<HashMap<TileType, G2dTexture>>();
+        let map = ecs.fetch::<BTreeMap<(i32, i32), MapTile>>();
+        let tilesheet = ecs.fetch::<TileSheet>();
+        let tilesheet_image = ecs.fetch::<G2dTexture>();
+
         for (tile_x, tile_y, _view_x, _view_y, screen_x, screen_y) in viewport_tiles.iter() {
 
             let tile_transform = c.transform.trans(*screen_x as f64, *screen_y as f64);
 
-            // Retrieve the appropriate tile texture from the map using the tile coordinates
-            match map.get(&(*tile_x, *tile_y)) {
-                Some(map_tile) => {
-                    match textures_by_tile_type.get(&map_tile) {
-                        Some(texture) => Image::new().draw(texture, &c.draw_state, tile_transform, g),
-                        None => Image::new().draw(textures_by_tile_type.get(&TileType::Missing).expect("could not render missing type"),
-                            &c.draw_state, tile_transform, g)
-                    }
-                },
-                None => {
-                    println!("Couldn't retrieve tile from map with coordinates -> ({}, {})", *tile_x, *tile_y);
-                    Image::new().draw(textures_by_tile_type.get(&TileType::Missing).expect("could not render missing type"),
-                    &c.draw_state, tile_transform, g);
+            // Retrieve the appropriate tile type from the map using the tile coordinates
+            let map_tile = match map.get(&(*tile_x, *tile_y)) {
+                Some(map_tile) => map_tile,
+                None => &MapTile {
+                    tile_id: 10,
+                    tile_type: TileType::Missing
                 }
-            }
+            };
+            
+            // Calculate tilesheet subregion containing the sprite matching the desired gid
+            
+            // This is the local index of the desired tile on the tilesheet (0 through tiles - 1)
+            // This also accounts for the fact that Tiled indexes start at 1, but we use 0 indexed offsets
+            let tile_index = map_tile.tile_id - tilesheet.first_tile_id;
+            let horizontal_index = tile_index % 10;
+            let vertical_index = tile_index / 10;
+
+            // Presumably, the margin from tiled means the space between the borders and the edge tiles
+            // As such, we will always add margin, but width and spacing will be dependent on our index
+            let horizontal_offset = tilesheet.margin + (horizontal_index * tilesheet.tile_width) + (horizontal_index * tilesheet.spacing);
+
+            // Vertical offset is a bit trickier, since tiles are only stacked once they exceed horizontal space
+            // To calculate this elegantly we can modulo using the number of tiles per row
+            let vertical_offset = tilesheet.margin + (vertical_index * tilesheet.tile_height) + (vertical_index * tilesheet.spacing);
+
+            let tile_rectangle = [
+                horizontal_offset as f64,
+                vertical_offset as f64,
+                tilesheet.tile_width as f64,
+                tilesheet.tile_height as f64
+            ];
+
+            Image::new().src_rect(tile_rectangle).draw(&*tilesheet_image, &c.draw_state, tile_transform, g);
         }
 
         // Render player in place on screen
@@ -224,7 +238,7 @@ fn in_game_draw(window: &mut PistonWindow, event: &Event, ecs: &World) {
         let renderables = ecs.read_storage::<Renderable>();
         let players = ecs.read_storage::<Player>();
         let textures_by_player_direction = ecs.fetch::<HashMap<Direction, G2dTexture>>();
-        for (_pos, render, player) in (&positions, &renderables, &players).join() {
+        for (_pos, _render, player) in (&positions, &renderables, &players).join() {
             Image::new().draw(textures_by_player_direction.get(&player.direction).expect("could not source player texture"),
                 &c.draw_state,
                 c.transform.trans((WIDTH_PX / 2) as f64, (HEIGHT_PX / 2) as f64),
