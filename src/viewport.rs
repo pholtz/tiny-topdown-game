@@ -4,9 +4,11 @@ use crate::WIDTH_PX;
 
 /// Calculate viewport based on player position
 /// Viewport is specified as a tuple of pixel top-left coordinates
-pub fn calculate_viewport(player_position: (i32, i32)) -> (i32, i32) {
-    // println!("Viewport is -> ({}, {})", viewport.0, viewport.1);
-    return (player_position.0 - (WIDTH_PX / 2), player_position.1 - (HEIGHT_PX / 2));
+pub fn calculate_viewport(player_position: (f32, f32)) -> (i32, i32) {
+    return (
+        player_position.0.floor() as i32 - (WIDTH_PX / 2),
+        player_position.1.floor() as i32 - (HEIGHT_PX / 2)
+    );
 }
 
 /// Given viewport start point, decompose into an vector of tile coordinates

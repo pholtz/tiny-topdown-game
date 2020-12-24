@@ -48,8 +48,8 @@ type Point2 = na::Point2<f32>;
 
 #[derive(Component)]
 struct Position {
-    x: i32,
-    y: i32,
+    x: f32,
+    y: f32,
 }
 
 #[derive(Component)]
@@ -58,7 +58,8 @@ struct Renderable {
 
 #[derive(Component, Debug)]
 struct Player {
-    direction: Direction
+    direction: Direction,
+    animation_index: u8,
 }
 
 pub const WIDTH_PX: i32 = 960;
@@ -82,10 +83,11 @@ impl GameState {
         world.register::<Player>();
 
         world.create_entity()
-            .with(Position { x: 0, y: 0 })
+            .with(Position { x: 0.0, y: 0.0 })
             .with(Renderable {})
             .with(Player {
-                direction: Direction::Down
+                direction: Direction::Down,
+                animation_index: 0,
             })
             .build();
 

@@ -7,6 +7,9 @@ use ggez::{graphics, Context, GameResult, event, timer, graphics::Rect};
 use ggez::event::KeyCode;
 use specs::prelude::*;
 
+const PLAYER_ANIMATION_FRAMES: u8 = 4;
+const PLAYER_MOVE_SPEED_TPS: f32 = 0.6;
+
 pub fn in_game_input(state: &mut GameState, ctx: &mut Context, keycode: KeyCode) {
     // Here we attempt to convert the Keycode into a Direction using the helper
     // we defined earlier.
@@ -115,14 +118,16 @@ pub fn in_game_draw(state: &mut GameState, ctx: &mut Context) -> GameResult<()> 
 
 fn try_move_player(direction: Direction, ecs: &World) {
     let delta = match direction {
-        Direction::Up => (0, -1 * TL_PX),
-        Direction::Left => (-1 * TL_PX, 0),
-        Direction::Down => (0, TL_PX),
-        Direction::Right => (TL_PX, 0),
+        Direction::Up => (0.0, -1.0 * (PLAYER_MOVE_SPEED_TPS * TL_PX as f32)),
+        Direction::Left => (-1.0 * (PLAYER_MOVE_SPEED_TPS * TL_PX as f32), 0.0),
+        Direction::Down => (0.0, PLAYER_MOVE_SPEED_TPS * TL_PX as f32),
+        Direction::Right => (PLAYER_MOVE_SPEED_TPS * TL_PX as f32, 0.0),
     };
     let mut positions = ecs.write_storage::<Position>();
     let mut players = ecs.write_storage::<Player>();
     for (player, pos) in (&mut players, &mut positions).join() {
+        // Alternate between 4 animation frames (0-3)
+        player.animation_index = (player.animation_index + 1) % 4;
         player.direction = direction;
         pos.x += delta.0;
         pos.y += delta.1;
