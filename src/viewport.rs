@@ -24,11 +24,16 @@ pub fn generate_viewport_tiles(viewport: (i32, i32)) -> Vec<(i32, i32, i32, i32,
         view_py -= 1;
     }
 
+    // To calculate the min, we simply reference the tile-clamped value we calculated above.
+    // To calculate the max, we add the number of tiles that fit into the width / height
+    // However, we also add 1 because in some cases the lower end fitting causes the view
+    // to be set too low, which steals some of the render from the bottom and right sides
+    // of the screen. Adding a few extra tiles on both the bottom and right accounts for this.
     let mut viewport_tiles = Vec::new();
     let view_tx = view_px / TL_PX;
     let view_ty = view_py / TL_PX;
-    let max_view_tx = view_tx + (WIDTH_PX / TL_PX);
-    let max_view_ty = view_ty + (HEIGHT_PX / TL_PX);
+    let max_view_tx = view_tx + (WIDTH_PX / TL_PX) + 2;
+    let max_view_ty = view_ty + (HEIGHT_PX / TL_PX) + 2;
 
     let mut screen_px = 0;
     let mut screen_py = 0;
