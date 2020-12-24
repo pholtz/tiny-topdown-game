@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
 
-use piston_window::PistonWindow;
 use specs::prelude::*;
 
 use std::fs::File;
@@ -114,7 +113,7 @@ pub fn load_basic_map_tmx_infinite(_map: &Map, _tiles: &HashMap<(i32, i32), Chun
 }
 
 /// Creates a basic map with just floor. Doesn't do any objects yet.
-pub fn load_basic_map(_window: &mut PistonWindow, _ecs: &mut World) -> BTreeMap<(i32, i32), MapTile> {
+pub fn load_basic_map(_ecs: &mut World) -> BTreeMap<(i32, i32), MapTile> {
     let mut map = BTreeMap::new();
 
     for x in (-1 * WIDTH_TL)..WIDTH_TL {
