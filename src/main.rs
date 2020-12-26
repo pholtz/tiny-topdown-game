@@ -72,7 +72,8 @@ pub struct GameState {
     root: RootState,
     ecs: World,
     tilesheet: graphics::Image,
-    font: graphics::Font
+    font: graphics::Font,
+    show_fps: bool,
 }
 
 impl GameState {
@@ -110,6 +111,7 @@ impl GameState {
             ecs: world,
             tilesheet: tileset_image,
             font: font,
+            show_fps: true,
         }
     }
 }

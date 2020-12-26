@@ -7,6 +7,7 @@ use ggez::{graphics, Context, GameResult, event, timer, graphics::Rect};
 use ggez::event::KeyCode;
 use specs::prelude::*;
 
+const DESIRED_FPS: u32 = 120;
 const PLAYER_ANIMATION_FRAMES: u8 = 4;
 const PLAYER_MOVE_SPEED_TPS: f32 = 0.6;
 
@@ -19,13 +20,13 @@ pub fn in_game_input(state: &mut GameState, ctx: &mut Context, keycode: KeyCode)
 
     match keycode {
         KeyCode::Escape => event::quit(ctx),
+        KeyCode::Key0 => state.show_fps = !state.show_fps,
         _ => (), // Do nothing
     }
 }
 
 pub fn in_game_update(_state: &mut GameState, ctx: &mut Context) -> GameResult<()> {
-    const DESIRED_FPS: u32 = 60;
-    while timer::check_update_time(ctx, 60) {
+    if timer::check_update_time(ctx, DESIRED_FPS) {
         let _seconds = 1.0 / (DESIRED_FPS as f32);
     }
     Ok(())
@@ -109,6 +110,11 @@ pub fn in_game_draw(state: &mut GameState, ctx: &mut Context) -> GameResult<()> 
             drawparams)?;
     }
 
+    // Render the fps, if desired
+    if state.show_fps {
+        render_fps(ctx)?;
+    }
+
     // Finally we call graphics::present to cycle the gpu's framebuffer and display
     // the new frame we just drew and then yield the thread until the next update.
     graphics::present(ctx)?;
@@ -132,4 +138,19 @@ fn try_move_player(direction: Direction, ecs: &World) {
         pos.x += delta.0;
         pos.y += delta.1;
     }
+}
+
+fn render_fps(ctx: &mut Context) -> GameResult<()> {
+    let fps = timer::fps(ctx);
+    let fps_text = graphics::Text::new(format!("FPS: {:.2}", fps));
+    graphics::draw(ctx, &fps_text, (Point2::new(0.0, 0.0), graphics::BLACK))?;
+
+    let delta = timer::delta(ctx);
+    let delta_text = graphics::Text::new(format!("Delta: {:.2}ms", delta.as_millis()));
+    graphics::draw(ctx, &delta_text, (Point2::new(0.0, 12.0), graphics::BLACK))?;
+
+    // let ticks = timer::ticks(ctx);
+    // let ticks_text = graphics::Text::new(format!("Ticks: {}", ticks));
+    // graphics::draw(ctx, &ticks_text, (Point2::new(0.0, 20.0), graphics::BLACK))?;
+    Ok(())
 }

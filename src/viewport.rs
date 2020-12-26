@@ -37,15 +37,15 @@ pub fn generate_viewport_tiles(viewport: (i32, i32)) -> Vec<(i32, i32, i32, i32,
     let max_view_tx = view_tx + (WIDTH_PX / TL_PX) + 2;
     let max_view_ty = view_ty + (HEIGHT_PX / TL_PX) + 2;
 
-    let mut screen_px = 0;
-    let mut screen_py = 0;
+    let mut screen_px = view_px - viewport.0;
+    let mut screen_py = view_py - viewport.1;
 
     for ty in view_ty..max_view_ty {
         for tx in view_tx..max_view_tx {
             viewport_tiles.push((tx, ty, tx * TL_PX, ty * TL_PX, screen_px, screen_py));
             screen_px += TL_PX;
         }
-        screen_px = 0;
+        screen_px = view_px - viewport.0;
         screen_py += TL_PX;
     }
     viewport_tiles
