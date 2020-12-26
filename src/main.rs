@@ -59,6 +59,8 @@ struct Renderable {
 #[derive(Component, Debug)]
 struct Player {
     direction: Direction,
+    velocity: Point2,
+    acceleration: Point2,
     animation_index: u8,
 }
 
@@ -88,15 +90,28 @@ impl GameState {
             .with(Renderable {})
             .with(Player {
                 direction: Direction::Down,
+                velocity: Point2::new(0.0, 0.0),
+                acceleration: Point2::new(0.0, 0.0),
                 animation_index: 0,
             })
             .build();
 
         let mut textures_by_player_direction = HashMap::new();
-        textures_by_player_direction.insert(Direction::Down, graphics::Image::new(ctx, "/basic_guy.png").expect("could not load image"));
-        textures_by_player_direction.insert(Direction::Up, graphics::Image::new(ctx, "/basic_guy_up.png").expect("could not load image"));
-        textures_by_player_direction.insert(Direction::Left, graphics::Image::new(ctx, "/basic_guy_left.png").expect("could not load image"));
-        textures_by_player_direction.insert(Direction::Right, graphics::Image::new(ctx, "/basic_guy_right.png").expect("could not load image"));
+        textures_by_player_direction.insert(Direction::Down, vec![
+            graphics::Image::new(ctx, "/basic_guy/basic_guy_down_0.png").expect("could not load image"),
+            graphics::Image::new(ctx, "/basic_guy/basic_guy_down_1.png").expect("could not load image"),
+            graphics::Image::new(ctx, "/basic_guy/basic_guy_down_2.png").expect("could not load image"),
+            graphics::Image::new(ctx, "/basic_guy/basic_guy_down_3.png").expect("could not load image"),
+        ]);
+        textures_by_player_direction.insert(Direction::Up, vec![
+            graphics::Image::new(ctx, "/basic_guy_up.png").expect("could not load image")
+        ]);
+        textures_by_player_direction.insert(Direction::Left, vec![
+            graphics::Image::new(ctx, "/basic_guy_left.png").expect("could not load image")
+        ]);
+        textures_by_player_direction.insert(Direction::Right, vec![
+            graphics::Image::new(ctx, "/basic_guy_right.png").expect("could not load image")
+        ]);
         world.insert(textures_by_player_direction);
 
         let font = graphics::Font::new(ctx, "/FiraSans-Regular.ttf").expect("could not load font");

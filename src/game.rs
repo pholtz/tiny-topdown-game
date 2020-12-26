@@ -3,13 +3,14 @@ use crate::map::{MapTile, TileSheet, TileType};
 use crate::viewport;
 use crate::{WIDTH_PX, HEIGHT_PX, TL_PX};
 use std::{collections::{BTreeMap, HashMap}};
+use std::cmp::{min, max};
 use ggez::{graphics, Context, GameResult, event, timer, graphics::Rect};
 use ggez::event::KeyCode;
 use specs::prelude::*;
 
-const DESIRED_FPS: u32 = 120;
+const DESIRED_FPS: u32 = 60;
 const PLAYER_ANIMATION_FRAMES: u8 = 4;
-const PLAYER_MOVE_SPEED_TPS: f32 = 0.6;
+const PLAYER_MOVE_SPEED_TPS: f32 = 1.0;
 
 pub fn in_game_input(state: &mut GameState, ctx: &mut Context, keycode: KeyCode) {
     // Here we attempt to convert the Keycode into a Direction using the helper
@@ -25,9 +26,36 @@ pub fn in_game_input(state: &mut GameState, ctx: &mut Context, keycode: KeyCode)
     }
 }
 
-pub fn in_game_update(_state: &mut GameState, ctx: &mut Context) -> GameResult<()> {
+pub fn in_game_update(state: &mut GameState, ctx: &mut Context) -> GameResult<()> {
     if timer::check_update_time(ctx, DESIRED_FPS) {
         let _seconds = 1.0 / (DESIRED_FPS as f32);
+
+        let mut positions = state.ecs.write_storage::<Position>();
+        let mut players = state.ecs.write_storage::<Player>();
+        for (pos, player) in (&mut positions, &mut players).join() {
+            // Also, burn down velocity using built-in friction rules (for now)
+            // This requires clamping to prevent values from going wild
+            player.velocity *= 0.1;
+            player.velocity.x = unsigned_zeroing_clamp(player.velocity.x, 0.1, 50.0);
+            player.velocity.y = unsigned_zeroing_clamp(player.velocity.y, 0.1, 50.0);
+
+            // Move the player according to their velocity in units per second
+            pos.x += player.velocity.x;
+            pos.y += player.velocity.y;
+        }
+    }
+
+    if timer::check_update_time(ctx, 8) {
+        let mut positions = state.ecs.write_storage::<Position>();
+        let mut players = state.ecs.write_storage::<Player>();
+        for (_pos, player) in (&mut positions, &mut players).join() {
+            // Alternate between 4 animation frames (0-3)
+            if player.velocity.x > 0.0 || player.velocity.y > 0.0 {
+                player.animation_index = (player.animation_index + 1) % PLAYER_ANIMATION_FRAMES;
+            } else {
+                player.animation_index = 0;
+            }
+        }
     }
     Ok(())
 }
@@ -100,13 +128,18 @@ pub fn in_game_draw(state: &mut GameState, ctx: &mut Context) -> GameResult<()> 
     let positions = state.ecs.read_storage::<Position>();
     let renderables = state.ecs.read_storage::<Renderable>();
     let players = state.ecs.read_storage::<Player>();
-    let textures_by_player_direction = state.ecs.fetch::<HashMap<Direction, graphics::Image>>();
+    let textures_by_player_direction = state.ecs.fetch::<HashMap<Direction, Vec<graphics::Image>>>();
     for (_pos, _render, player) in (&positions, &renderables, &players).join() {
+        let animated_textures = textures_by_player_direction.get(&player.direction).expect("could not source player texture");
+        let current_animated_texture = match animated_textures.get(player.animation_index as usize) {
+            Some(texture) => texture,
+            None => &animated_textures[0],
+        };
         let drawparams = graphics::DrawParam::new()
             .dest(Point2::new((WIDTH_PX / 2) as f32, (HEIGHT_PX / 2) as f32))
             .offset(Point2::new(0.5, 0.5));
         graphics::draw(ctx,
-            textures_by_player_direction.get(&player.direction).expect("could not source player texture"),
+            current_animated_texture,
             drawparams)?;
     }
 
@@ -131,12 +164,10 @@ fn try_move_player(direction: Direction, ecs: &World) {
     };
     let mut positions = ecs.write_storage::<Position>();
     let mut players = ecs.write_storage::<Player>();
-    for (player, pos) in (&mut players, &mut positions).join() {
-        // Alternate between 4 animation frames (0-3)
-        player.animation_index = (player.animation_index + 1) % 4;
+    for (player, _pos) in (&mut players, &mut positions).join() {
         player.direction = direction;
-        pos.x += delta.0;
-        pos.y += delta.1;
+        player.velocity.x += delta.0;
+        player.velocity.y += delta.1;
     }
 }
 
@@ -153,4 +184,20 @@ fn render_fps(ctx: &mut Context) -> GameResult<()> {
     // let ticks_text = graphics::Text::new(format!("Ticks: {}", ticks));
     // graphics::draw(ctx, &ticks_text, (Point2::new(0.0, 20.0), graphics::BLACK))?;
     Ok(())
+}
+
+/// Prevents the given value from going outside of the range.
+/// The range is comprised of the `min` and `max`, and is interpreted as both signed and unsigned.
+/// This means that a min of 0.1 and a max of 100.0 would keep the given value in the ranges of
+/// -100.0 to -0.1 and 0.1 to 100.0. This is useful when clamping a vector which could be positive
+/// or negative.
+pub fn unsigned_zeroing_clamp(value: f32, min: f32, max: f32) -> f32 {
+    let mut clamped_value = value;
+    if value.abs() < min {
+        clamped_value = 0.0;
+    }
+    if value.abs() > max {
+        clamped_value = max * value.signum();
+    }
+    clamped_value
 }
