@@ -5,7 +5,6 @@ pub mod viewport;
 pub mod menu;
 pub mod game;
 
-use std::{collections::{HashMap}};
 use std::path;
 use std::env;
 use specs::prelude::*;
@@ -74,6 +73,7 @@ pub struct GameState {
     root: RootState,
     ecs: World,
     tilesheet: graphics::Image,
+    player_sprite_sheet: graphics::Image,
     font: graphics::Font,
     show_fps: bool,
 }
@@ -96,24 +96,7 @@ impl GameState {
             })
             .build();
 
-        let mut textures_by_player_direction = HashMap::new();
-        textures_by_player_direction.insert(Direction::Down, vec![
-            graphics::Image::new(ctx, "/basic_guy/basic_guy_down_0.png").expect("could not load image"),
-            graphics::Image::new(ctx, "/basic_guy/basic_guy_down_1.png").expect("could not load image"),
-            graphics::Image::new(ctx, "/basic_guy/basic_guy_down_2.png").expect("could not load image"),
-            graphics::Image::new(ctx, "/basic_guy/basic_guy_down_3.png").expect("could not load image"),
-        ]);
-        textures_by_player_direction.insert(Direction::Up, vec![
-            graphics::Image::new(ctx, "/basic_guy_up.png").expect("could not load image")
-        ]);
-        textures_by_player_direction.insert(Direction::Left, vec![
-            graphics::Image::new(ctx, "/basic_guy_left.png").expect("could not load image")
-        ]);
-        textures_by_player_direction.insert(Direction::Right, vec![
-            graphics::Image::new(ctx, "/basic_guy_right.png").expect("could not load image")
-        ]);
-        world.insert(textures_by_player_direction);
-
+        let player_sprite_sheet_image = graphics::Image::new(ctx, "/basic_guy/basic_guy_sheet.png").expect("could not load image");
         let font = graphics::Font::new(ctx, "/FiraSans-Regular.ttf").expect("could not load font");
         let tileset_image = graphics::Image::new(ctx, "/grass_tileset.png").expect("could not load image");
 
@@ -125,6 +108,7 @@ impl GameState {
             root: RootState::StartMenu,
             ecs: world,
             tilesheet: tileset_image,
+            player_sprite_sheet: player_sprite_sheet_image,
             font: font,
             show_fps: true,
         }

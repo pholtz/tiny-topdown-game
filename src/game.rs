@@ -2,8 +2,7 @@ use crate::{GameState, Direction, Point2, Player, Position, Renderable};
 use crate::map::{MapTile, TileSheet, TileType};
 use crate::viewport;
 use crate::{WIDTH_PX, HEIGHT_PX, TL_PX};
-use std::{collections::{BTreeMap, HashMap}};
-use std::cmp::{min, max};
+use std::{collections::{BTreeMap}};
 use ggez::{graphics, Context, GameResult, event, timer, graphics::Rect};
 use ggez::event::KeyCode;
 use specs::prelude::*;
@@ -50,7 +49,7 @@ pub fn in_game_update(state: &mut GameState, ctx: &mut Context) -> GameResult<()
         let mut players = state.ecs.write_storage::<Player>();
         for (_pos, player) in (&mut positions, &mut players).join() {
             // Alternate between 4 animation frames (0-3)
-            if player.velocity.x > 0.0 || player.velocity.y > 0.0 {
+            if player.velocity.x.abs() > 0.0 || player.velocity.y.abs() > 0.0 {
                 player.animation_index = (player.animation_index + 1) % PLAYER_ANIMATION_FRAMES;
             } else {
                 player.animation_index = 0;
@@ -128,18 +127,28 @@ pub fn in_game_draw(state: &mut GameState, ctx: &mut Context) -> GameResult<()> 
     let positions = state.ecs.read_storage::<Position>();
     let renderables = state.ecs.read_storage::<Renderable>();
     let players = state.ecs.read_storage::<Player>();
-    let textures_by_player_direction = state.ecs.fetch::<HashMap<Direction, Vec<graphics::Image>>>();
     for (_pos, _render, player) in (&positions, &renderables, &players).join() {
-        let animated_textures = textures_by_player_direction.get(&player.direction).expect("could not source player texture");
-        let current_animated_texture = match animated_textures.get(player.animation_index as usize) {
-            Some(texture) => texture,
-            None => &animated_textures[0],
+
+        // TODO: Create subrectangle referencing the part of the sprite sheet containing the desired sprite to render
+        let horizontal_index = player.animation_index;
+        let vertical_index = match player.direction {
+            Direction::Down => 0,
+            Direction::Left => 1,
+            Direction::Right => 2,
+            Direction::Up => 3
         };
+        let desired_sprite_subrectangle = [
+            horizontal_index as f32 / 10 as f32,
+            vertical_index as f32 / 5 as f32,
+            0.1,
+            0.2,
+        ];
         let drawparams = graphics::DrawParam::new()
+            .src(Rect::new(desired_sprite_subrectangle[0], desired_sprite_subrectangle[1], desired_sprite_subrectangle[2], desired_sprite_subrectangle[3]))
             .dest(Point2::new((WIDTH_PX / 2) as f32, (HEIGHT_PX / 2) as f32))
             .offset(Point2::new(0.5, 0.5));
         graphics::draw(ctx,
-            current_animated_texture,
+            &state.player_sprite_sheet,
             drawparams)?;
     }
 
