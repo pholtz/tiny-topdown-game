@@ -1,14 +1,15 @@
-use crate::{GameState, Direction, Point2, Player, Position, Renderable};
+use crate::{GameState, Direction, Point2, Player, Position, Renderable, Viewport};
 use crate::map::{MapTile, TileSheet, TileType};
-use crate::viewport;
 use crate::{WIDTH_PX, HEIGHT_PX, TL_PX};
+use crate::viewport_system::ViewportSystem;
+use crate::movement_system::MovementSystem;
+use crate::animation_system::AnimationSystem;
 use std::{collections::{BTreeMap}};
 use ggez::{graphics, Context, GameResult, event, timer, graphics::Rect};
 use ggez::event::KeyCode;
 use specs::prelude::*;
 
 const DESIRED_FPS: u32 = 60;
-const PLAYER_ANIMATION_FRAMES: u8 = 4;
 const PLAYER_MOVE_SPEED_TPS: f32 = 1.0;
 
 pub fn in_game_input(state: &mut GameState, ctx: &mut Context, keycode: KeyCode) {
@@ -29,53 +30,69 @@ pub fn in_game_update(state: &mut GameState, ctx: &mut Context) -> GameResult<()
     if timer::check_update_time(ctx, DESIRED_FPS) {
         let _seconds = 1.0 / (DESIRED_FPS as f32);
 
-        let mut positions = state.ecs.write_storage::<Position>();
-        let mut players = state.ecs.write_storage::<Player>();
-        for (pos, player) in (&mut positions, &mut players).join() {
-            // Also, burn down velocity using built-in friction rules (for now)
-            // This requires clamping to prevent values from going wild
-            player.velocity *= 0.1;
-            player.velocity.x = unsigned_zeroing_clamp(player.velocity.x, 0.1, 50.0);
-            player.velocity.y = unsigned_zeroing_clamp(player.velocity.y, 0.1, 50.0);
+        let mut viewport_system = ViewportSystem{};
+        let mut movement_system = MovementSystem{};
+        viewport_system.run_now(&state.ecs);
+        movement_system.run_now(&state.ecs);
 
-            // Move the player according to their velocity in units per second
-            pos.x += player.velocity.x;
-            pos.y += player.velocity.y;
-        }
+        // Something about rebalancing the new / old entities, not exactly sure
+        state.ecs.maintain();
     }
 
     if timer::check_update_time(ctx, 8) {
-        let mut positions = state.ecs.write_storage::<Position>();
-        let mut players = state.ecs.write_storage::<Player>();
-        for (_pos, player) in (&mut positions, &mut players).join() {
-            // Alternate between 4 animation frames (0-3)
-            if player.velocity.x.abs() > 0.0 || player.velocity.y.abs() > 0.0 {
-                player.animation_index = (player.animation_index + 1) % PLAYER_ANIMATION_FRAMES;
-            } else {
-                player.animation_index = 0;
-            }
-        }
+        let mut animation_system = AnimationSystem{};
+        animation_system.run_now(&state.ecs);
     }
+
     Ok(())
 }
 
 pub fn in_game_draw(state: &mut GameState, ctx: &mut Context) -> GameResult<()> {
     graphics::clear(ctx, [0.6, 0.6, 0.6, 1.0].into());
+    render_tiles(ctx, &state)?;
+    render_player(ctx, &state)?;
+    if state.show_fps {
+        render_fps(ctx)?;
+    }
+    // Finally we call graphics::present to cycle the gpu's framebuffer and display
+    // the new frame we just drew and then yield the thread until the next update.
+    graphics::present(ctx)?;
+    ggez::timer::yield_now();
+    Ok(())
+}
 
+fn try_move_player(direction: Direction, ecs: &World) {
+    let delta = match direction {
+        Direction::Up => (0.0, -1.0 * (PLAYER_MOVE_SPEED_TPS * TL_PX as f32)),
+        Direction::Left => (-1.0 * (PLAYER_MOVE_SPEED_TPS * TL_PX as f32), 0.0),
+        Direction::Down => (0.0, PLAYER_MOVE_SPEED_TPS * TL_PX as f32),
+        Direction::Right => (PLAYER_MOVE_SPEED_TPS * TL_PX as f32, 0.0),
+    };
+    let mut positions = ecs.write_storage::<Position>();
+    let mut players = ecs.write_storage::<Player>();
+    let mut viewports = ecs.write_storage::<Viewport>();
+    for (player, _position, viewport) in (&mut players, &mut positions, &mut viewports).join() {
+        player.direction = direction;
+        player.velocity.x += delta.0;
+        player.velocity.y += delta.1;
+        viewport.dirty = true;
+    }
+}
+
+/// Renders any map tiles visible to the players viewport to the screen
+/// Adjusts for map location as well as players perspective (centered).
+fn render_tiles(ctx: &mut Context, state: &GameState) -> GameResult<()> {
     let player = state.ecs.read_storage::<Player>();
     let positions = state.ecs.read_storage::<Position>();
-    let (_player, pos) = (&player, &positions).join().next().expect("No player and position entities found");
-
-    let viewport = viewport::calculate_viewport((pos.x, pos.y));
-
-    let viewport_tiles = viewport::generate_viewport_tiles(viewport);
+    let viewports = state.ecs.read_storage::<Viewport>();
+    let (_player, _position, viewport) = (&player, &positions, &viewports).join().next().expect("No player, position, and viewport entities found");
 
     // Render viewport tiles in place on screen
     // Render each tile using the given pixel positions
     let map = state.ecs.fetch::<BTreeMap<(i32, i32), MapTile>>();
     let tilesheet = state.ecs.fetch::<TileSheet>();
 
-    for (tile_x, tile_y, _view_x, _view_y, screen_x, screen_y) in viewport_tiles.iter() {
+    for (tile_x, tile_y, _view_x, _view_y, screen_x, screen_y) in viewport.tiles.iter() {
 
         // Retrieve the appropriate tile type from the map using the tile coordinates
         let map_tile = match map.get(&(*tile_x, *tile_y)) {
@@ -121,7 +138,12 @@ pub fn in_game_draw(state: &mut GameState, ctx: &mut Context) -> GameResult<()> 
             .offset(Point2::new(0.5, 0.5));
         graphics::draw(ctx, &state.tilesheet, drawparams)?;
     }
+    Ok(())
+}
 
+/// Renders the player sprite onto the screen.
+/// Supports animation via a rolling animation index and sprite sheet subrectangles.
+fn render_player(ctx: &mut Context, state: &GameState) -> GameResult<()> {
     // Render player in place on screen
     // This is easy now since we will always just render the player in the middle of the screen
     let positions = state.ecs.read_storage::<Position>();
@@ -151,62 +173,22 @@ pub fn in_game_draw(state: &mut GameState, ctx: &mut Context) -> GameResult<()> 
             &state.player_sprite_sheet,
             drawparams)?;
     }
-
-    // Render the fps, if desired
-    if state.show_fps {
-        render_fps(ctx)?;
-    }
-
-    // Finally we call graphics::present to cycle the gpu's framebuffer and display
-    // the new frame we just drew and then yield the thread until the next update.
-    graphics::present(ctx)?;
-    ggez::timer::yield_now();
     Ok(())
 }
 
-fn try_move_player(direction: Direction, ecs: &World) {
-    let delta = match direction {
-        Direction::Up => (0.0, -1.0 * (PLAYER_MOVE_SPEED_TPS * TL_PX as f32)),
-        Direction::Left => (-1.0 * (PLAYER_MOVE_SPEED_TPS * TL_PX as f32), 0.0),
-        Direction::Down => (0.0, PLAYER_MOVE_SPEED_TPS * TL_PX as f32),
-        Direction::Right => (PLAYER_MOVE_SPEED_TPS * TL_PX as f32, 0.0),
-    };
-    let mut positions = ecs.write_storage::<Position>();
-    let mut players = ecs.write_storage::<Player>();
-    for (player, _pos) in (&mut players, &mut positions).join() {
-        player.direction = direction;
-        player.velocity.x += delta.0;
-        player.velocity.y += delta.1;
-    }
-}
-
+/// Unobtrusively renders the rolling average frames per second.
 fn render_fps(ctx: &mut Context) -> GameResult<()> {
     let fps = timer::fps(ctx);
     let fps_text = graphics::Text::new(format!("FPS: {:.2}", fps));
     graphics::draw(ctx, &fps_text, (Point2::new(0.0, 0.0), graphics::BLACK))?;
 
-    let delta = timer::delta(ctx);
-    let delta_text = graphics::Text::new(format!("Delta: {:.2}ms", delta.as_millis()));
-    graphics::draw(ctx, &delta_text, (Point2::new(0.0, 12.0), graphics::BLACK))?;
+    // let delta = timer::delta(ctx);
+    // let delta_text = graphics::Text::new(format!("Delta: {:.2}ms", delta.as_millis()));
+    // graphics::draw(ctx, &delta_text, (Point2::new(0.0, 12.0), graphics::BLACK))?;
 
     // let ticks = timer::ticks(ctx);
     // let ticks_text = graphics::Text::new(format!("Ticks: {}", ticks));
-    // graphics::draw(ctx, &ticks_text, (Point2::new(0.0, 20.0), graphics::BLACK))?;
-    Ok(())
-}
+    // graphics::draw(ctx, &ticks_text, (Point2::new(0.0, 24.0), graphics::BLACK))?;
 
-/// Prevents the given value from going outside of the range.
-/// The range is comprised of the `min` and `max`, and is interpreted as both signed and unsigned.
-/// This means that a min of 0.1 and a max of 100.0 would keep the given value in the ranges of
-/// -100.0 to -0.1 and 0.1 to 100.0. This is useful when clamping a vector which could be positive
-/// or negative.
-pub fn unsigned_zeroing_clamp(value: f32, min: f32, max: f32) -> f32 {
-    let mut clamped_value = value;
-    if value.abs() < min {
-        clamped_value = 0.0;
-    }
-    if value.abs() > max {
-        clamped_value = max * value.signum();
-    }
-    clamped_value
+    Ok(())
 }

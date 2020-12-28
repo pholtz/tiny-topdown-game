@@ -1,8 +1,36 @@
+use specs::prelude::*;
+use crate::component::*;
 use crate::TL_PX;
 use crate::HEIGHT_PX;
 use crate::WIDTH_PX;
 
-/// Calculate viewport based on player position
+pub struct ViewportSystem {}
+
+impl<'a> System<'a> for ViewportSystem {
+    type SystemData = (
+        Entities<'a>,
+        ReadStorage<'a, Position>,
+        ReadStorage<'a, Player>,
+        WriteStorage<'a, Viewport>
+    );
+
+    fn run(&mut self, data : Self::SystemData) {
+        let (entities, position, player, mut viewport) = data;
+
+        for (_entity, position, _player, viewport) in (&entities, &position, &player, &mut viewport).join() {
+            if viewport.dirty {
+                let viewport_origin = calculate_viewport((position.x, position.y));
+                let viewport_tiles = generate_viewport_tiles(viewport_origin);
+
+                viewport.dirty = false;
+                viewport.tiles.clear();
+                viewport.tiles = viewport_tiles;
+            }
+        }
+    }
+}
+
+/// Calculate viewport origin (top-left 0,0 point) based on player position
 /// Viewport is specified as a tuple of pixel top-left coordinates
 pub fn calculate_viewport(player_position: (f32, f32)) -> (i32, i32) {
     return (

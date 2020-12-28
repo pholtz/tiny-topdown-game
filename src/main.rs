@@ -1,26 +1,32 @@
 extern crate tiled;
 
 pub mod map;
-pub mod viewport;
 pub mod menu;
 pub mod game;
+pub mod component;
+pub mod viewport_system;
+pub mod movement_system;
+pub mod animation_system;
 
+use component::*;
 use std::path;
 use std::env;
-use specs::prelude::*;
-use specs_derive::Component;
 use ggez::event::{KeyCode, KeyMods};
 use ggez::{graphics, Context, ContextBuilder, GameResult};
 use ggez::event::{self, EventHandler};
 use ggez::nalgebra as na;
+use specs::prelude::*;
 
-enum RootState {
-    StartMenu,
-    InGame,
-}
+type Point2 = na::Point2<f32>;
+
+pub const WIDTH_PX: i32 = 960;
+pub const HEIGHT_PX: i32 = 540;
+pub const TL_PX: i32 = 32;
+pub const WIDTH_TL: i32 = WIDTH_PX / TL_PX;
+pub const HEIGHT_TL: i32 = HEIGHT_PX / TL_PX;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-enum Direction {
+pub enum Direction {
     Up,
     Down,
     Left,
@@ -43,31 +49,10 @@ impl Direction {
     }
 }
 
-type Point2 = na::Point2<f32>;
-
-#[derive(Component)]
-struct Position {
-    x: f32,
-    y: f32,
+pub enum RootState {
+    StartMenu,
+    InGame,
 }
-
-#[derive(Component)]
-struct Renderable {
-}
-
-#[derive(Component, Debug)]
-struct Player {
-    direction: Direction,
-    velocity: Point2,
-    acceleration: Point2,
-    animation_index: u8,
-}
-
-pub const WIDTH_PX: i32 = 960;
-pub const HEIGHT_PX: i32 = 540;
-pub const TL_PX: i32 = 32;
-pub const WIDTH_TL: i32 = WIDTH_PX / TL_PX;
-pub const HEIGHT_TL: i32 = HEIGHT_PX / TL_PX;
 
 pub struct GameState {
     root: RootState,
@@ -84,6 +69,7 @@ impl GameState {
         world.register::<Position>();
         world.register::<Renderable>();
         world.register::<Player>();
+        world.register::<Viewport>();
 
         world.create_entity()
             .with(Position { x: 0.0, y: 0.0 })
@@ -93,6 +79,10 @@ impl GameState {
                 velocity: Point2::new(0.0, 0.0),
                 acceleration: Point2::new(0.0, 0.0),
                 animation_index: 0,
+            })
+            .with(Viewport {
+                tiles: vec![],
+                dirty: true,
             })
             .build();
 
